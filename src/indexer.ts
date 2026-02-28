@@ -38,7 +38,6 @@ export class Indexer {
     // Check if chain is BSC and apply the failover logic like in zayan bot
     if (config.CHAIN_NAME.toLowerCase() === 'bsc' || config.CHAIN_NAME.toLowerCase() === 'bnb') {
       const bscFallbacks = [
-        "https://bsc-mainnet.infura.io/v3/3c577009c5eb4b34b9542a2e60b855a9",
         "https://bsc-dataseed1.ninicoin.io",
         "https://bsc-dataseed2.ninicoin.io",
         "https://bsc-dataseed3.ninicoin.io",
