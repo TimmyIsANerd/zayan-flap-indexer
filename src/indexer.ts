@@ -39,6 +39,7 @@ export class Indexer {
     if (config.CHAIN_NAME.toLowerCase() === 'bsc' || config.CHAIN_NAME.toLowerCase() === 'bnb') {
       const bscFallbacks = [
         "https://bsc-mainnet.core.chainstack.com/d59b68507fe3c86a6e5f14206388e70c",
+        "https://1rpc.io/yXaPZ27HtX25PDgq/bnb",
         "https://bsc-dataseed1.ninicoin.io",
         "https://bsc-dataseed2.ninicoin.io",
         "https://bsc-dataseed3.ninicoin.io",
