@@ -124,11 +124,37 @@ export class Indexer {
     // Use sequential queries to prevent silent deadlocks from heavily limited BSC nodes
     const blockNumber = await this.client.getBlockNumber();
     
-    const logs = await this.client.getLogs({
-      address: config.PORTAL_CONTRACT_ADDRESS as Address,
-      fromBlock: BigInt(fromBlock),
-      toBlock: BigInt(toBlock),
-    });
+    // Robust log fetcher that dynamically shrinks the batch size if the RPC node stalls/rejects
+    let logs: Log[] = [];
+    let currentFrom = fromBlock;
+    let currentTo = toBlock;
+    
+    while (currentFrom <= toBlock) {
+      try {
+        const batchLogs = await Promise.race([
+          this.client.getLogs({
+            address: config.PORTAL_CONTRACT_ADDRESS as Address,
+            fromBlock: BigInt(currentFrom),
+            toBlock: BigInt(currentTo),
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('RPC getLogs timeout')), 8000))
+        ]) as Log[];
+        
+        logs = logs.concat(batchLogs);
+        currentFrom = currentTo + 1;
+        currentTo = toBlock; // Reset attempt to target max toBlock again for the next chunk
+        
+      } catch (error) {
+        console.warn(`RPC failed fetching logs ${currentFrom} to ${currentTo}. Shrinking batch size...`);
+        if (currentFrom === currentTo) {
+          throw new Error(`RPC fatal error on single block ${currentFrom}: ${error}`);
+        }
+        // Halve the batch size
+        currentTo = Math.floor((currentFrom + currentTo) / 2);
+        // Add a small delay to punish the rate limit gracefully
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
 
     // Ensure we're not getting stale data
     if (blockNumber < BigInt(toBlock)) {
