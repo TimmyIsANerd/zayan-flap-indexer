@@ -49,10 +49,10 @@ export class Indexer {
         "https://bsc-dataseed4.defibit.io"
       ];
       const transports = [];
-      if (config.RPC_URL) transports.push(http(config.RPC_URL, { batch: true, retryCount: 3, retryDelay: 1000 }));
-      transports.push(...bscFallbacks.map(url => http(url, { batch: true, retryCount: 3, retryDelay: 1000 })));
+      if (config.RPC_URL) transports.push(http(config.RPC_URL, { batch: true }));
+      transports.push(...bscFallbacks.map(url => http(url, { batch: true })));
       
-      transport = fallback(transports, { rank: true });
+      transport = fallback(transports, { rank: true, retryCount: 2 });
     } else {
       // Multiple RPC URLs provided via comma separation
       if (config.RPC_URL && config.RPC_URL.includes(',')) {
