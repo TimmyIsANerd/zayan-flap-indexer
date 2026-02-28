@@ -84,7 +84,7 @@ export class ApiServer {
 
       return c.json({
         status: 'ok',
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
         last_processed_block: lastProcessedBlock || null,
         current_block: currentBlock || null,
         total_tokens: totalTokens,
