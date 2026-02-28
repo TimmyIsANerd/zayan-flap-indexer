@@ -121,15 +121,13 @@ export class Indexer {
 
     console.log(`Processing blocks ${fromBlock} to ${toBlock}`);
 
-    // Use batch call to get both block number and logs
-    const [blockNumber, logs] = await Promise.all([
-      this.client.getBlockNumber(),
-      this.client.getLogs({
-        address: config.PORTAL_CONTRACT_ADDRESS as Address,
-        fromBlock: BigInt(fromBlock),
-        toBlock: BigInt(toBlock),
-      })
-    ]);
+    // Use sequential calls to avoid triggering harsh RPC batch/payload limits on Gateway nodes like Infura
+    const blockNumber = await this.client.getBlockNumber();
+    const logs = await this.client.getLogs({
+      address: config.PORTAL_CONTRACT_ADDRESS as Address,
+      fromBlock: BigInt(fromBlock),
+      toBlock: BigInt(toBlock),
+    });
 
     // Ensure we're not getting stale data
     if (blockNumber < BigInt(toBlock)) {
