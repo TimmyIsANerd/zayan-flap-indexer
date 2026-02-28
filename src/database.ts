@@ -110,6 +110,12 @@ export class DatabaseManager {
     return stmt.get(address.toLowerCase()) as TokenRow | undefined;
   }
 
+  getTotalTokens(): number {
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM tokens');
+    const row = stmt.get() as { count: number };
+    return row.count;
+  }
+
   updateTokenCurve(address: string, r: string, h: string, k: string): void {
     const stmt = this.db.prepare('UPDATE tokens SET r = ?, h = ?, k = ? WHERE address = ?');
     stmt.run(r, h, k, address.toLowerCase());

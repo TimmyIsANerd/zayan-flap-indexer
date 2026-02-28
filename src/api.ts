@@ -55,8 +55,29 @@ export class ApiServer {
   }
 
   private setupRoutes(): void {
-    this.app.get('/health', (c) => {
-      return c.json({ status: 'ok', timestamp: Date.now() });
+    this.app.get('/health', async (c) => {
+      const lastProcessedBlock = this.db.getLastProcessedBlock();
+      const totalTokens = this.db.getTotalTokens();
+      let currentBlock = 0;
+      
+      if (this.indexer) {
+        currentBlock = await this.indexer.getCurrentBlock();
+      }
+
+      let syncStatus = 'unknown';
+      if (currentBlock > 0 && lastProcessedBlock) {
+        const diff = currentBlock - lastProcessedBlock;
+        syncStatus = diff < 1000 ? 'synced' : 'syncing';
+      }
+
+      return c.json({
+        status: 'ok',
+        timestamp: Date.now(),
+        last_processed_block: lastProcessedBlock || null,
+        current_block: currentBlock || null,
+        total_tokens: totalTokens,
+        sync_status: syncStatus
+      });
     });
 
     this.app.get('/token/:address', async (c) => this.getToken(c));

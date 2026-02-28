@@ -89,6 +89,14 @@ export class Indexer {
     console.log('Stopping indexer...');
   }
 
+  public async getCurrentBlock(): Promise<number> {
+    try {
+      return Number(await this.client.getBlockNumber());
+    } catch (e) {
+      return 0;
+    }
+  }
+
   private async processNextBatch(): Promise<void> {
     const lastProcessedBlock = this.db.getLastProcessedBlock();
     const currentBlock = await this.client.getBlockNumber();
