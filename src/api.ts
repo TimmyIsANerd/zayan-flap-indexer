@@ -65,9 +65,21 @@ export class ApiServer {
       }
 
       let syncStatus = 'unknown';
+      let syncPercentage = 0;
+      
       if (currentBlock > 0 && lastProcessedBlock) {
         const diff = currentBlock - lastProcessedBlock;
         syncStatus = diff < 1000 ? 'synced' : 'syncing';
+        
+        const startBlock = config.DEFAULT_START_BLOCK || (currentBlock - 10000);
+        const totalBlocksToSync = currentBlock - startBlock;
+        const blocksSynced = lastProcessedBlock - startBlock;
+        
+        if (totalBlocksToSync > 0) {
+           syncPercentage = Math.max(0, Math.min(100, Number(((blocksSynced / totalBlocksToSync) * 100).toFixed(2))));
+        } else {
+           syncPercentage = 100;
+        }
       }
 
       return c.json({
@@ -76,7 +88,8 @@ export class ApiServer {
         last_processed_block: lastProcessedBlock || null,
         current_block: currentBlock || null,
         total_tokens: totalTokens,
-        sync_status: syncStatus
+        sync_status: syncStatus,
+        sync_percentage: syncPercentage
       });
     });
 
