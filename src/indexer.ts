@@ -49,17 +49,17 @@ export class Indexer {
         "https://bsc-dataseed4.defibit.io"
       ];
       const transports = [];
-      if (config.RPC_URL) transports.push(http(config.RPC_URL));
-      transports.push(...bscFallbacks.map(url => http(url)));
+      if (config.RPC_URL) transports.push(http(config.RPC_URL, { timeout: 10_000 }));
+      transports.push(...bscFallbacks.map(url => http(url, { timeout: 10_000 })));
       
       transport = fallback(transports, { rank: true, retryCount: 2 });
     } else {
       // Multiple RPC URLs provided via comma separation
       if (config.RPC_URL && config.RPC_URL.includes(',')) {
         const urls = config.RPC_URL.split(',').map(url => url.trim());
-        transport = fallback(urls.map(url => http(url)), { rank: true });
+        transport = fallback(urls.map(url => http(url, { timeout: 10_000 })), { rank: true });
       } else {
-        transport = http(config.RPC_URL);
+        transport = http(config.RPC_URL, { timeout: 10_000 });
       }
     }
 
@@ -121,8 +121,9 @@ export class Indexer {
 
     console.log(`Processing blocks ${fromBlock} to ${toBlock}`);
 
-    // Use sequential calls to avoid triggering harsh RPC batch/payload limits on Gateway nodes like Infura
+    // Use sequential queries to prevent silent deadlocks from heavily limited BSC nodes
     const blockNumber = await this.client.getBlockNumber();
+    
     const logs = await this.client.getLogs({
       address: config.PORTAL_CONTRACT_ADDRESS as Address,
       fromBlock: BigInt(fromBlock),
