@@ -45,9 +45,7 @@ export class Indexer {
         "https://bsc-dataseed1.defibit.io",
         "https://bsc-dataseed2.defibit.io",
         "https://bsc-dataseed3.defibit.io",
-        "https://bsc-dataseed4.defibit.io",
-        "https://bsc-mainnet.infura.io/v3/ed7482b807954a8ebabb12595a5857cc",
-        "https://bsc-mainnet.infura.io/v3/a94f9b85e1434a5fad8c84676ac5e8fe",
+        "https://bsc-dataseed4.defibit.io"
       ];
       const transports = [];
       if (config.RPC_URL) transports.push(http(config.RPC_URL, { batch: true }));
