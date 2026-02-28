@@ -38,6 +38,7 @@ export class Indexer {
     // Check if chain is BSC and apply the failover logic like in zayan bot
     if (config.CHAIN_NAME.toLowerCase() === 'bsc' || config.CHAIN_NAME.toLowerCase() === 'bnb') {
       const bscFallbacks = [
+        "https://bsc-mainnet.infura.io/v3/3c577009c5eb4b34b9542a2e60b855a9",
         "https://bsc-dataseed1.ninicoin.io",
         "https://bsc-dataseed2.ninicoin.io",
         "https://bsc-dataseed3.ninicoin.io",
@@ -48,17 +49,17 @@ export class Indexer {
         "https://bsc-dataseed4.defibit.io"
       ];
       const transports = [];
-      if (config.RPC_URL) transports.push(http(config.RPC_URL, { batch: true }));
-      transports.push(...bscFallbacks.map(url => http(url, { batch: true })));
+      if (config.RPC_URL) transports.push(http(config.RPC_URL));
+      transports.push(...bscFallbacks.map(url => http(url)));
       
       transport = fallback(transports, { rank: true, retryCount: 2 });
     } else {
       // Multiple RPC URLs provided via comma separation
       if (config.RPC_URL && config.RPC_URL.includes(',')) {
         const urls = config.RPC_URL.split(',').map(url => url.trim());
-        transport = fallback(urls.map(url => http(url, { batch: true, retryCount: 3, retryDelay: 1000 })), { rank: true });
+        transport = fallback(urls.map(url => http(url)), { rank: true });
       } else {
-        transport = http(config.RPC_URL, { batch: true });
+        transport = http(config.RPC_URL);
       }
     }
 
@@ -67,6 +68,7 @@ export class Indexer {
       batch: {
         multicall: {
           batchSize: 50,
+          wait: 100, // delay between batches to ease rate limits
         }
       }
     });
