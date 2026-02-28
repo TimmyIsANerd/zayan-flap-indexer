@@ -64,6 +64,11 @@ export class Indexer {
 
     this.client = createPublicClient({
       transport,
+      batch: {
+        multicall: {
+          batchSize: 50,
+        }
+      }
     });
   }
 
