@@ -19,7 +19,7 @@ indexer.start().catch((error) => {
 });
 
 console.log(`Starting API server on port ${config.PORT}`);
-export default {
+Bun.serve({
   port: config.PORT,
   fetch: apiServer.app.fetch,
-};
+});
