@@ -336,7 +336,7 @@ export class ApiServer {
     const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
     const currReserve = curve.estimateReserve(currCirculatingSupply.toString());
     const maxReserve = curve.estimateReserve(dexSupplyThreshold.toString());
-    const feeRate = new Decimal(config.BUY_FEE_RATE).div(10000);
+    const feeRate = new Decimal(config.BUY_FEE_RATE).div(10000).add(new Decimal(token.tax || '0'));
     const inputAfterFee = new Decimal(inputEth).mul(new Decimal(1).sub(feeRate));
     
     let newReserve: Decimal;
@@ -350,9 +350,9 @@ export class ApiServer {
     
     const newCirculatingSupply = curve.estimateSupply(newReserve.toString());
     const outputAmountTokens = newCirculatingSupply.sub(currCirculatingSupply);
-    const outputAmountWei = outputAmountTokens.mul(1e18);
+    const outputAmountWei = outputAmountTokens.mul(new Decimal('1e18'));
     
-    return outputAmountWei.toString();
+    return outputAmountWei.toFixed(0);
   }
 
   private calculateSellQuote(curve: CDPV2, token: any, inputTokenAmountWei: string): string {
@@ -363,10 +363,10 @@ export class ApiServer {
     const newCirculatingSupply = currCirculatingSupply.sub(inputAmount);
     const newReserve = curve.estimateReserve(newCirculatingSupply.toString());
     const outputBeforeFee = currReserve.sub(newReserve);
-    const feeRate = new Decimal(config.SELL_FEE_RATE).div(10000);
+    const feeRate = new Decimal(config.SELL_FEE_RATE).div(10000).add(new Decimal(token.tax || '0'));
     const outputAmountEth = outputBeforeFee.mul(new Decimal(1).sub(feeRate));
-    const outputAmountWei = outputAmountEth.mul(1e18);
+    const outputAmountWei = outputAmountEth.mul(new Decimal('1e18'));
     
-    return outputAmountWei.toString();
+    return outputAmountWei.toFixed(0);
   }
 }
