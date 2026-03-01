@@ -110,6 +110,11 @@ export class DatabaseManager {
     return stmt.get(address.toLowerCase()) as TokenRow | undefined;
   }
 
+  getAllTokens(): TokenRow[] {
+    const stmt = this.db.prepare('SELECT * FROM tokens');
+    return stmt.all() as TokenRow[];
+  }
+
   getTotalTokens(): number {
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM tokens');
     const row = stmt.get() as { count: number };

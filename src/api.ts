@@ -26,6 +26,10 @@ export interface TokenResponse {
   pool: string | null;
   current_price: string | null;
   progress: string;
+  market_cap: string;
+  liquidity: string;
+  metadata_uri: string;
+  image_url: string | null;
 }
 
 export interface QuoteResponse {
@@ -94,7 +98,71 @@ export class ApiServer {
     });
 
     this.app.get('/token/:address', async (c) => this.getToken(c));
+    this.app.get('/tokens', async (c) => this.getTokens(c));
     this.app.get('/quote', async (c) => this.getQuote(c));
+  }
+
+  private async getTokens(c: any) {
+    try {
+      const tokens = this.db.getAllTokens();
+      const enrichedTokens = [];
+
+      for (const token of tokens) {
+        const curve = new CDPV2(
+          parseFloat(token.r),
+          parseFloat(token.h),
+          parseFloat(token.k)
+        );
+
+        const currentPrice = token.status === 'listed_on_dex' ? null : curve.price(token.circulating_supply);
+        
+        const circulatingSupply = new Decimal(token.circulating_supply);
+        const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
+        let progress: string;
+        let liquidity = "0";
+        let marketCap = "0";
+
+        if (circulatingSupply.gte(dexSupplyThreshold)) {
+          progress = "1.0000";
+          liquidity = curve.estimateReserve(token.dex_supply_threshold).toString();
+        } else {
+          const currReserve = curve.estimateReserve(token.circulating_supply);
+          liquidity = currReserve.toString();
+          const expectedReserveToMigrate = curve.estimateReserve(token.dex_supply_threshold);
+
+          if (expectedReserveToMigrate.lte(0)) {
+            progress = "0.0000";
+          } else {
+            progress = currReserve.div(expectedReserveToMigrate).toFixed(4);
+          }
+        }
+
+        if (currentPrice) {
+          marketCap = currentPrice.mul(1_000_000_000).toString();
+        }
+
+        const metadataURI = `https://flap.mypinata.cloud/ipfs/${token.meta}`;
+        const { nonce, ...tokenData } = token;
+
+        enrichedTokens.push({
+          ...tokenData,
+          current_price: currentPrice ? currentPrice.toString() : null,
+          progress,
+          liquidity,
+          market_cap: marketCap,
+          metadata_uri: metadataURI,
+          image_url: null // Skip remote IPFS fetch on bulk queries for speed
+        });
+      }
+
+      // Sort by progress descending
+      enrichedTokens.sort((a, b) => parseFloat(b.progress) - parseFloat(a.progress));
+
+      return c.json(enrichedTokens);
+    } catch (error) {
+      console.error('Error in getTokens:', error);
+      return c.json({ error: 'Internal server error' }, 500);
+    }
   }
 
   private async getToken(c: any) {
@@ -135,10 +203,16 @@ export class ApiServer {
       const circulatingSupply = new Decimal(token.circulating_supply);
       const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
 
+      let liquidity = "0";
+      let marketCap = "0";
+
       if (circulatingSupply.gte(dexSupplyThreshold)) {
         progress = "1.0000";
+        liquidity = curve.estimateReserve(token.dex_supply_threshold).toString();
       } else {
         const currReserve = curve.estimateReserve(token.circulating_supply);
+        liquidity = currReserve.toString();
+        
         const expectedReserveToMigrate = curve.estimateReserve(token.dex_supply_threshold);
 
         if (expectedReserveToMigrate.lte(0)) {
@@ -149,12 +223,38 @@ export class ApiServer {
         }
       }
 
+      if (currentPrice) {
+        // Standard Flap.sh meme token supply is ~1 Billion 
+        marketCap = currentPrice.mul(1000000000).toString();
+      }
+
+      // Resolve metadata securely without blocking the event
+      const metadataURI = `https://flap.mypinata.cloud/ipfs/${token.meta}`;
+      let image_url = null;
+      try {
+        const metaRes = await fetch(metadataURI, { signal: AbortSignal.timeout(3000) });
+        if (metaRes.ok) {
+          const metaJson: any = await metaRes.json();
+          if (metaJson.image) {
+            image_url = metaJson.image.startsWith('ipfs://') 
+              ? metaJson.image.replace('ipfs://', 'https://flap.mypinata.cloud/ipfs/') 
+              : (metaJson.image.startsWith('http') ? metaJson.image : `https://flap.mypinata.cloud/ipfs/${metaJson.image}`);
+          }
+        }
+      } catch (e) {
+        // Keep image_url as null if IPFS times out 
+      }
+
       const { nonce, ...tokenData } = token;
 
       const response: TokenResponse = {
         ...tokenData,
         current_price: currentPrice ? currentPrice.toString() : null,
-        progress
+        progress,
+        liquidity,
+        market_cap: marketCap,
+        metadata_uri: metadataURI,
+        image_url
       };
 
       return c.json(response);
