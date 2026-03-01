@@ -330,7 +330,8 @@ export class ApiServer {
     }
   }
 
-  private calculateBuyQuote(curve: CDPV2, token: any, inputEth: string): string {
+  private calculateBuyQuote(curve: CDPV2, token: any, inputEthWei: string): string {
+    const inputEth = new Decimal(inputEthWei).div(1e18).toString();
     const currCirculatingSupply = new Decimal(token.circulating_supply);
     const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
     const currReserve = curve.estimateReserve(currCirculatingSupply.toString());
@@ -348,12 +349,14 @@ export class ApiServer {
     }
     
     const newCirculatingSupply = curve.estimateSupply(newReserve.toString());
-    const outputAmount = newCirculatingSupply.sub(currCirculatingSupply);
+    const outputAmountTokens = newCirculatingSupply.sub(currCirculatingSupply);
+    const outputAmountWei = outputAmountTokens.mul(1e18);
     
-    return outputAmount.toString();
+    return outputAmountWei.toString();
   }
 
-  private calculateSellQuote(curve: CDPV2, token: any, inputTokenAmount: string): string {
+  private calculateSellQuote(curve: CDPV2, token: any, inputTokenAmountWei: string): string {
+    const inputTokenAmount = new Decimal(inputTokenAmountWei).div(1e18).toString();
     const currCirculatingSupply = new Decimal(token.circulating_supply);
     const inputAmount = new Decimal(inputTokenAmount);
     const currReserve = curve.estimateReserve(currCirculatingSupply.toString());
@@ -361,8 +364,9 @@ export class ApiServer {
     const newReserve = curve.estimateReserve(newCirculatingSupply.toString());
     const outputBeforeFee = currReserve.sub(newReserve);
     const feeRate = new Decimal(config.SELL_FEE_RATE).div(10000);
-    const outputAmount = outputBeforeFee.mul(new Decimal(1).sub(feeRate));
+    const outputAmountEth = outputBeforeFee.mul(new Decimal(1).sub(feeRate));
+    const outputAmountWei = outputAmountEth.mul(1e18);
     
-    return outputAmount.toString();
+    return outputAmountWei.toString();
   }
 }
