@@ -28,13 +28,19 @@ export interface MetaRow {
 
 export class DatabaseManager {
   private db: Database;
+  private statements: Map<string, any> = new Map();
 
   constructor() {
     this.db = new Database(config.DATABASE_FILE);
     this.init();
+    this.prepareStatements();
   }
 
   private init() {
+    // Enable WAL mode for better concurrency
+    this.db.exec('PRAGMA journal_mode = WAL;');
+    this.db.exec('PRAGMA synchronous = NORMAL;');
+
     // Create tokens table
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS tokens (
@@ -74,17 +80,44 @@ export class DatabaseManager {
     `);
   }
 
-  // Token operations
-  insertToken(token: Omit<TokenRow, 'address'> & { address: string }): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO tokens (
+  private prepareStatements() {
+    this.statements.set('insertToken', this.db.prepare(`
+      INSERT OR REPLACE INTO tokens (
         address, nonce, name, symbol, meta, status, creator, created_at,
         created_block, quote_token, r, h, k, circulating_supply,
         dex_supply_threshold, tax, pool
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    `));
 
-    stmt.run(
+    this.statements.set('getToken', this.db.prepare('SELECT * FROM tokens WHERE address = ?'));
+    this.statements.set('getAllTokens', this.db.prepare('SELECT * FROM tokens'));
+    this.statements.set('getTotalTokens', this.db.prepare('SELECT COUNT(*) as count FROM tokens'));
+    this.statements.set('updateCurve', this.db.prepare('UPDATE tokens SET r = ?, h = ?, k = ? WHERE address = ?'));
+    this.statements.set('updateThresh', this.db.prepare('UPDATE tokens SET dex_supply_threshold = ? WHERE address = ?'));
+    this.statements.set('updateQuote', this.db.prepare('UPDATE tokens SET quote_token = ? WHERE address = ?'));
+    this.statements.set('updateTax', this.db.prepare('UPDATE tokens SET tax = ? WHERE address = ?'));
+    this.statements.set('updateSupply', this.db.prepare('UPDATE tokens SET circulating_supply = ? WHERE address = ?'));
+    this.statements.set('updateListing', this.db.prepare('UPDATE tokens SET status = ?, pool = ? WHERE address = ?'));
+    this.statements.set('getMeta', this.db.prepare('SELECT value FROM meta WHERE key = ?'));
+    this.statements.set('setMeta', this.db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'));
+  }
+
+  // Transaction support
+  beginTransaction(): void {
+    this.db.exec('BEGIN TRANSACTION');
+  }
+
+  commitTransaction(): void {
+    this.db.exec('COMMIT');
+  }
+
+  rollbackTransaction(): void {
+    this.db.exec('ROLLBACK');
+  }
+
+  // Token operations
+  insertToken(token: Omit<TokenRow, 'address'> & { address: string }): void {
+    this.statements.get('insertToken').run(
       token.address.toLowerCase(),
       token.nonce,
       token.name,
@@ -106,61 +139,50 @@ export class DatabaseManager {
   }
 
   getToken(address: string): TokenRow | undefined {
-    const stmt = this.db.prepare('SELECT * FROM tokens WHERE address = ?');
-    return stmt.get(address.toLowerCase()) as TokenRow | undefined;
+    return this.statements.get('getToken').get(address.toLowerCase()) as TokenRow | undefined;
   }
 
   getAllTokens(): TokenRow[] {
-    const stmt = this.db.prepare('SELECT * FROM tokens');
-    return stmt.all() as TokenRow[];
+    return this.statements.get('getAllTokens').all() as TokenRow[];
   }
 
   getTotalTokens(): number {
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM tokens');
-    const row = stmt.get() as { count: number };
+    const row = this.statements.get('getTotalTokens').get() as { count: number };
     return row.count;
   }
 
   updateTokenCurve(address: string, r: string, h: string, k: string): void {
-    const stmt = this.db.prepare('UPDATE tokens SET r = ?, h = ?, k = ? WHERE address = ?');
-    stmt.run(r, h, k, address.toLowerCase());
+    this.statements.get('updateCurve').run(r, h, k, address.toLowerCase());
   }
 
   updateTokenDexSupplyThreshold(address: string, threshold: string): void {
-    const stmt = this.db.prepare('UPDATE tokens SET dex_supply_threshold = ? WHERE address = ?');
-    stmt.run(threshold, address.toLowerCase());
+    this.statements.get('updateThresh').run(threshold, address.toLowerCase());
   }
 
   updateTokenQuoteToken(address: string, quoteToken: string): void {
-    const stmt = this.db.prepare('UPDATE tokens SET quote_token = ? WHERE address = ?');
-    stmt.run(quoteToken.toLowerCase(), address.toLowerCase());
+    this.statements.get('updateQuote').run(quoteToken.toLowerCase(), address.toLowerCase());
   }
 
   updateTokenTax(address: string, tax: string): void {
-    const stmt = this.db.prepare('UPDATE tokens SET tax = ? WHERE address = ?');
-    stmt.run(tax, address.toLowerCase());
+    this.statements.get('updateTax').run(tax, address.toLowerCase());
   }
 
   updateTokenCirculatingSupply(address: string, supply: string): void {
-    const stmt = this.db.prepare('UPDATE tokens SET circulating_supply = ? WHERE address = ?');
-    stmt.run(supply, address.toLowerCase());
+    this.statements.get('updateSupply').run(supply, address.toLowerCase());
   }
 
   updateTokenDexListing(address: string, pool: string): void {
-    const stmt = this.db.prepare('UPDATE tokens SET status = ?, pool = ? WHERE address = ?');
-    stmt.run('listed_on_dex', pool.toLowerCase(), address.toLowerCase());
+    this.statements.get('updateListing').run('listed_on_dex', pool.toLowerCase(), address.toLowerCase());
   }
 
   // Meta operations
   getMeta(key: string): string | undefined {
-    const stmt = this.db.prepare('SELECT value FROM meta WHERE key = ?');
-    const row = stmt.get(key) as { value: string } | undefined;
+    const row = this.statements.get('getMeta').get(key) as { value: string } | undefined;
     return row?.value;
   }
 
   setMeta(key: string, value: string): void {
-    const stmt = this.db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
-    stmt.run(key, value);
+    this.statements.get('setMeta').run(key, value);
   }
 
   getLastProcessedBlock(): number | undefined {
@@ -170,6 +192,11 @@ export class DatabaseManager {
 
   setLastProcessedBlock(blockNumber: number): void {
     this.setMeta('last_processed_block', blockNumber.toString());
+  }
+
+  clearAllData(): void {
+    this.db.exec('DELETE FROM tokens');
+    this.db.exec('DELETE FROM meta');
   }
 
   close(): void {

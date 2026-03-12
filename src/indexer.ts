@@ -107,11 +107,15 @@ export class Indexer {
     const lastProcessedBlock = this.db.getLastProcessedBlock();
     const currentBlock = await this.client.getBlockNumber();
     
+    const windowSize = 4000000;
+    const windowStart = Math.max(0, Number(currentBlock) - windowSize);
+    
     let fromBlock: number;
     if (lastProcessedBlock) {
-      fromBlock = lastProcessedBlock + 1;
+      // If we are significantly behind the window, jump to the window start
+      fromBlock = Math.max(lastProcessedBlock + 1, windowStart);
     } else {
-      fromBlock = config.DEFAULT_START_BLOCK ?? Number(currentBlock) - 10000;
+      fromBlock = Math.max(config.DEFAULT_START_BLOCK ?? windowStart, windowStart);
     }
 
     const toBlock = Math.min(fromBlock + config.INDEX_BATCH_SIZE - 1, Number(currentBlock));
@@ -120,7 +124,7 @@ export class Indexer {
       return; // Nothing to process
     }
 
-    console.log(`Processing blocks ${fromBlock} to ${toBlock}`);
+    console.log(`Processing blocks ${fromBlock} to ${toBlock} (Current: ${currentBlock}, Start: ${windowStart})`);
 
     // Use sequential queries to prevent silent deadlocks from heavily limited BSC nodes
     const blockNumber = await this.client.getBlockNumber();
@@ -138,7 +142,7 @@ export class Indexer {
             fromBlock: BigInt(currentFrom),
             toBlock: BigInt(currentTo),
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('RPC getLogs timeout')), 8000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('RPC getLogs timeout')), 10000))
         ]) as Log[];
         
         logs = logs.concat(batchLogs);
@@ -153,7 +157,7 @@ export class Indexer {
         // Halve the batch size
         currentTo = Math.floor((currentFrom + currentTo) / 2);
         // Add a small delay to punish the rate limit gracefully
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
@@ -168,12 +172,23 @@ export class Indexer {
   }
 
   private async processLogs(logs: Log[]): Promise<void> {
-    for (const log of logs) {
-      try {
-        await this.processLog(log);
-      } catch (error) {
-        console.error('Error processing log:', error, log);
+    if (logs.length === 0) return;
+
+    this.db.beginTransaction();
+    try {
+      for (const log of logs) {
+        try {
+          await this.processLog(log);
+        } catch (error) {
+          console.error('Error processing log:', error, log);
+        }
       }
+      this.db.commitTransaction();
+      console.log(`Processed and committed ${logs.length} events`);
+    } catch (error) {
+      this.db.rollbackTransaction();
+      console.error('Failed to process logs, transaction rolled back:', error);
+      throw error;
     }
   }
 
