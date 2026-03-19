@@ -19,6 +19,7 @@ export interface TokenRow {
   dex_supply_threshold: string;
   tax: string;
   pool: string | null;
+  progress: string;
 }
 
 export interface MetaRow {
@@ -60,9 +61,17 @@ export class DatabaseManager {
         circulating_supply TEXT NOT NULL,
         dex_supply_threshold TEXT NOT NULL,
         tax TEXT NOT NULL,
-        pool TEXT
+        pool TEXT,
+        progress TEXT NOT NULL DEFAULT '0'
       )
     `);
+
+    // Migration for existing tables
+    try {
+      this.db.exec("ALTER TABLE tokens ADD COLUMN progress TEXT NOT NULL DEFAULT '0'");
+    } catch (e) {
+      // Column might already exist
+    }
 
     // Create meta table
     this.db.exec(`
@@ -77,6 +86,7 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_tokens_creator ON tokens(creator);
       CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);
       CREATE INDEX IF NOT EXISTS idx_tokens_created_block ON tokens(created_block);
+      CREATE INDEX IF NOT EXISTS idx_tokens_progress ON tokens(progress);
     `);
   }
 
@@ -85,19 +95,20 @@ export class DatabaseManager {
       INSERT OR REPLACE INTO tokens (
         address, nonce, name, symbol, meta, status, creator, created_at,
         created_block, quote_token, r, h, k, circulating_supply,
-        dex_supply_threshold, tax, pool
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        dex_supply_threshold, tax, pool, progress
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `));
 
     this.statements.set('getToken', this.db.prepare('SELECT * FROM tokens WHERE address = ?'));
+    this.statements.set('getTopTokens', this.db.prepare('SELECT * FROM tokens ORDER BY CAST(progress AS FLOAT) DESC LIMIT ? OFFSET ?'));
     this.statements.set('getAllTokens', this.db.prepare('SELECT * FROM tokens'));
     this.statements.set('getTotalTokens', this.db.prepare('SELECT COUNT(*) as count FROM tokens'));
     this.statements.set('updateCurve', this.db.prepare('UPDATE tokens SET r = ?, h = ?, k = ? WHERE address = ?'));
     this.statements.set('updateThresh', this.db.prepare('UPDATE tokens SET dex_supply_threshold = ? WHERE address = ?'));
     this.statements.set('updateQuote', this.db.prepare('UPDATE tokens SET quote_token = ? WHERE address = ?'));
     this.statements.set('updateTax', this.db.prepare('UPDATE tokens SET tax = ? WHERE address = ?'));
-    this.statements.set('updateSupply', this.db.prepare('UPDATE tokens SET circulating_supply = ? WHERE address = ?'));
-    this.statements.set('updateListing', this.db.prepare('UPDATE tokens SET status = ?, pool = ? WHERE address = ?'));
+    this.statements.set('updateSupply', this.db.prepare('UPDATE tokens SET circulating_supply = ?, progress = ? WHERE address = ?'));
+    this.statements.set('updateListing', this.db.prepare('UPDATE tokens SET status = ?, pool = ?, progress = ? WHERE address = ?'));
     this.statements.set('getMeta', this.db.prepare('SELECT value FROM meta WHERE key = ?'));
     this.statements.set('setMeta', this.db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'));
   }
@@ -134,7 +145,8 @@ export class DatabaseManager {
       token.circulating_supply,
       token.dex_supply_threshold,
       token.tax,
-      token.pool ? token.pool.toLowerCase() : null
+      token.pool ? token.pool.toLowerCase() : null,
+      token.progress || "0"
     );
   }
 
@@ -144,6 +156,10 @@ export class DatabaseManager {
 
   getAllTokens(): TokenRow[] {
     return this.statements.get('getAllTokens').all() as TokenRow[];
+  }
+
+  getTopTokens(limit: number, offset: number): TokenRow[] {
+    return this.statements.get('getTopTokens').all(limit, offset) as TokenRow[];
   }
 
   getTotalTokens(): number {
@@ -167,12 +183,12 @@ export class DatabaseManager {
     this.statements.get('updateTax').run(tax, address.toLowerCase());
   }
 
-  updateTokenCirculatingSupply(address: string, supply: string): void {
-    this.statements.get('updateSupply').run(supply, address.toLowerCase());
+  updateTokenCirculatingSupply(address: string, supply: string, progress: string): void {
+    this.statements.get('updateSupply').run(supply, progress, address.toLowerCase());
   }
 
   updateTokenDexListing(address: string, pool: string): void {
-    this.statements.get('updateListing').run('listed_on_dex', pool.toLowerCase(), address.toLowerCase());
+    this.statements.get('updateListing').run('listed_on_dex', pool.toLowerCase(), '1.0000', address.toLowerCase());
   }
 
   // Meta operations

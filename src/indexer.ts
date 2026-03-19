@@ -3,6 +3,8 @@ import type { Address, Log } from 'viem';
 import { DatabaseManager } from './database.js';
 import type { TokenRow } from './database.js';
 import { config } from './config.js';
+import { CDPV2 } from './curve.js';
+import { Decimal } from 'decimal.js';
 import { 
   PORTAL_ABI, 
   ERC20_ABI,
@@ -258,9 +260,11 @@ export class Indexer {
       circulating_supply: "0",
       dex_supply_threshold: DEFAULT_DEX_SUPPLY_THRESHOLD,
       tax: "0",
-      pool: null
+      pool: null,
+      progress: "0.0000"
     };
 
+    tokenData.progress = this.calculateProgress(tokenData);
     this.db.insertToken(tokenData);
     console.log(`Token created: ${token}`);
   }
@@ -325,8 +329,13 @@ export class Indexer {
       }
     }
 
-    this.db.updateTokenCirculatingSupply(token, formatEther(newSupply));
-    console.log(`Token circulating supply updated: ${token}, supply=${formatEther(newSupply)}`);
+    const progress = this.calculateProgress({
+      ...tokenData,
+      circulating_supply: formatEther(newSupply)
+    });
+
+    this.db.updateTokenCirculatingSupply(token, formatEther(newSupply), progress);
+    console.log(`Token circulating supply updated: ${token}, supply=${formatEther(newSupply)}, progress=${progress}`);
   }
 
   private async handleLaunchedToDEX(log: Log, args: any): Promise<void> {
@@ -427,13 +436,46 @@ export class Indexer {
         circulating_supply: formatEther(tokenState.circulatingSupply),
         dex_supply_threshold: formatEther(tokenState.dexSupplyThresh),
         tax: "0", // We don't have this from the contract
-        pool: null // We don't have this from the contract
+        pool: null, // We don't have this from the contract
+        progress: "0.0000"
       };
 
+      tokenData.progress = this.calculateProgress(tokenData);
       this.db.insertToken(tokenData);
       console.log(`Remediated token data for ${tokenAddress}`);
     } catch (error) {
       console.error(`Failed to remediate token data for ${tokenAddress}:`, error);
+    }
+  }
+
+  private calculateProgress(token: any): string {
+    if (token.status === 'listed_on_dex') return "1.0000";
+    
+    try {
+      const curve = new CDPV2(
+        parseFloat(token.r),
+        parseFloat(token.h),
+        parseFloat(token.k)
+      );
+
+      const circulatingSupply = new Decimal(token.circulating_supply);
+      const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
+
+      if (circulatingSupply.gte(dexSupplyThreshold)) {
+        return "1.0000";
+      }
+
+      const currReserve = curve.estimateReserve(token.circulating_supply);
+      const expectedReserveToMigrate = curve.estimateReserve(token.dex_supply_threshold);
+
+      if (expectedReserveToMigrate.lte(0)) {
+        return "0.0000";
+      }
+
+      return currReserve.div(expectedReserveToMigrate).toFixed(4);
+    } catch (error) {
+      console.error('Error calculating progress:', error);
+      return "0.0000";
     }
   }
 

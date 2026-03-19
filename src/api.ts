@@ -104,7 +104,12 @@ export class ApiServer {
 
   private async getTokens(c: any) {
     try {
-      const tokens = this.db.getAllTokens();
+      const page = parseInt(c.req.query('page') || '1');
+      const limit = parseInt(c.req.query('limit') || '50');
+      const offset = (page - 1) * limit;
+
+      const totalTokens = this.db.getTotalTokens();
+      const tokens = this.db.getTopTokens(limit, offset);
       const enrichedTokens = [];
 
       for (const token of tokens) {
@@ -116,29 +121,18 @@ export class ApiServer {
 
         const currentPrice = token.status === 'listed_on_dex' ? null : curve.price(token.circulating_supply);
         
-        const circulatingSupply = new Decimal(token.circulating_supply);
-        const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
-        let progress: string;
-        let liquidity = "0";
         let marketCap = "0";
-
-        if (circulatingSupply.gte(dexSupplyThreshold)) {
-          progress = "1.0000";
-          liquidity = curve.estimateReserve(token.dex_supply_threshold).toString();
-        } else {
-          const currReserve = curve.estimateReserve(token.circulating_supply);
-          liquidity = currReserve.toString();
-          const expectedReserveToMigrate = curve.estimateReserve(token.dex_supply_threshold);
-
-          if (expectedReserveToMigrate.lte(0)) {
-            progress = "0.0000";
-          } else {
-            progress = currReserve.div(expectedReserveToMigrate).toFixed(4);
-          }
+        if (currentPrice) {
+          marketCap = currentPrice.mul(1000000000).toString();
         }
 
-        if (currentPrice) {
-          marketCap = currentPrice.mul(1_000_000_000).toString();
+        let liquidity = "0";
+        const circulatingSupply = new Decimal(token.circulating_supply);
+        const dexSupplyThreshold = new Decimal(token.dex_supply_threshold);
+        if (circulatingSupply.gte(dexSupplyThreshold)) {
+            liquidity = curve.estimateReserve(token.dex_supply_threshold).toString();
+        } else {
+            liquidity = curve.estimateReserve(token.circulating_supply).toString();
         }
 
         const metadataURI = `https://flap.mypinata.cloud/ipfs/${token.meta}`;
@@ -147,18 +141,22 @@ export class ApiServer {
         enrichedTokens.push({
           ...tokenData,
           current_price: currentPrice ? currentPrice.toString() : null,
-          progress,
-          liquidity,
           market_cap: marketCap,
+          liquidity,
           metadata_uri: metadataURI,
-          image_url: null // Skip remote IPFS fetch on bulk queries for speed
+          image_url: null 
         });
       }
 
-      // Sort by progress descending
-      enrichedTokens.sort((a, b) => parseFloat(b.progress) - parseFloat(a.progress));
-
-      return c.json(enrichedTokens);
+      return c.json({
+        tokens: enrichedTokens,
+        pagination: {
+          total: totalTokens,
+          page,
+          limit,
+          pages: Math.ceil(totalTokens / limit)
+        }
+      });
     } catch (error) {
       console.error('Error in getTokens:', error);
       return c.json({ error: 'Internal server error' }, 500);
