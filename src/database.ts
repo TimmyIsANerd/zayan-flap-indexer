@@ -40,7 +40,7 @@ export class DatabaseManager {
   private init() {
     // Enable WAL mode for better concurrency
     this.db.exec('PRAGMA journal_mode = WAL;');
-    this.db.exec('PRAGMA synchronous = NORMAL;');
+    this.db.exec('PRAGMA synchronous = FULL;');
 
     // Create tokens table
     this.db.exec(`
@@ -163,8 +163,13 @@ export class DatabaseManager {
   }
 
   getTotalTokens(): number {
-    const row = this.statements.get('getTotalTokens').get() as { count: number };
-    return row.count;
+    try {
+      const row = this.statements.get('getTotalTokens').get() as { count: number } | undefined;
+      return row ? row.count : 0;
+    } catch (e) {
+      console.error('Error fetching total tokens:', e);
+      throw e;
+    }
   }
 
   updateTokenCurve(address: string, r: string, h: string, k: string): void {

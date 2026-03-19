@@ -60,41 +60,46 @@ export class ApiServer {
 
   private setupRoutes(): void {
     this.app.get('/health', async (c) => {
-      const lastProcessedBlock = this.db.getLastProcessedBlock();
-      const totalTokens = this.db.getTotalTokens();
-      let currentBlock = 0;
-      
-      if (this.indexer) {
-        currentBlock = await this.indexer.getCurrentBlock();
-      }
-
-      let syncStatus = 'unknown';
-      let syncPercentage = 0;
-      
-      if (currentBlock > 0 && lastProcessedBlock) {
-        const diff = currentBlock - lastProcessedBlock;
-        syncStatus = diff < 1000 ? 'synced' : 'syncing';
+      try {
+        const lastProcessedBlock = this.db.getLastProcessedBlock();
+        const totalTokens = this.db.getTotalTokens();
+        let currentBlock = 0;
         
-        const startBlock = config.DEFAULT_START_BLOCK || (currentBlock - 10000);
-        const totalBlocksToSync = currentBlock - startBlock;
-        const blocksSynced = lastProcessedBlock - startBlock;
-        
-        if (totalBlocksToSync > 0) {
-           syncPercentage = Math.max(0, Math.min(100, Number(((blocksSynced / totalBlocksToSync) * 100).toFixed(2))));
-        } else {
-           syncPercentage = 100;
+        if (this.indexer) {
+          currentBlock = await this.indexer.getCurrentBlock();
         }
-      }
 
-      return c.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        last_processed_block: lastProcessedBlock || null,
-        current_block: currentBlock || null,
-        total_tokens: totalTokens,
-        sync_status: syncStatus,
-        sync_percentage: syncPercentage
-      });
+        let syncStatus = 'unknown';
+        let syncPercentage = 0;
+        
+        if (currentBlock > 0 && lastProcessedBlock) {
+          const diff = currentBlock - lastProcessedBlock;
+          syncStatus = diff < 1000 ? 'synced' : 'syncing';
+          
+          const startBlock = config.DEFAULT_START_BLOCK || (currentBlock - 10000);
+          const totalBlocksToSync = currentBlock - startBlock;
+          const blocksSynced = lastProcessedBlock - startBlock;
+          
+          if (totalBlocksToSync > 0) {
+             syncPercentage = Math.max(0, Math.min(100, Number(((blocksSynced / totalBlocksToSync) * 100).toFixed(2))));
+          } else {
+             syncPercentage = 100;
+          }
+        }
+
+        return c.json({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          last_processed_block: lastProcessedBlock || null,
+          current_block: currentBlock || null,
+          total_tokens: totalTokens,
+          sync_status: syncStatus,
+          sync_percentage: syncPercentage
+        });
+      } catch (error) {
+        console.error('Error in health check:', error);
+        return c.json({ error: 'Internal server error', message: error instanceof Error ? error.message : String(error) }, 500);
+      }
     });
 
     this.app.get('/token/:address', async (c) => this.getToken(c));
