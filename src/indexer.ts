@@ -236,7 +236,7 @@ export class Indexer {
       }
     } catch (error) {
       // Log might not be one of our events, skip it
-      console.log('Skipping unknown event or decode error:', error);
+      // console.log('Skipping unknown event or decode error:', error);
     }
   }
 

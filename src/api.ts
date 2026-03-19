@@ -66,7 +66,15 @@ export class ApiServer {
         let currentBlock = 0;
         
         if (this.indexer) {
-          currentBlock = await this.indexer.getCurrentBlock();
+          try {
+             // Timeout after 3 seconds if client.getBlockNumber hangs
+             currentBlock = await Promise.race([
+                this.indexer.getCurrentBlock(),
+                new Promise<number>((_, reject) => setTimeout(() => reject(new Error('getCurrentBlock timeout')), 3000))
+             ]);
+          } catch (e) {
+             console.warn('Health check: Fetching block number failed or timed out:', e);
+          }
         }
 
         let syncStatus = 'unknown';
