@@ -40,7 +40,12 @@ export class DatabaseManager {
   private init() {
     // Enable WAL mode for better concurrency
     this.db.exec('PRAGMA journal_mode = WAL;');
-    this.db.exec('PRAGMA synchronous = FULL;');
+    // In WAL mode, NORMAL is fast and safe (recommended)
+    this.db.exec('PRAGMA synchronous = NORMAL;');
+    // Limit WAL file size to 64MB before auto-checkpoint
+    this.db.exec('PRAGMA journal_size_limit = 67108864;');
+    // Check integrity on boot
+    this.checkIntegrity();
 
     // Create tokens table
     this.db.exec(`
@@ -88,6 +93,18 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_tokens_created_block ON tokens(created_block);
       CREATE INDEX IF NOT EXISTS idx_tokens_progress ON tokens(progress);
     `);
+  }
+
+  private checkIntegrity() {
+    try {
+      const result = this.db.query('PRAGMA integrity_check;').get() as { integrity_check: string };
+      if (result.integrity_check !== 'ok') {
+        console.error('DATABASE CORRUPTION DETECTED:', result.integrity_check);
+        // We don't exit here to allow manual intervention, but we log the critical error
+      }
+    } catch (e) {
+      console.error('Failed to run integrity check:', e);
+    }
   }
 
   private prepareStatements() {

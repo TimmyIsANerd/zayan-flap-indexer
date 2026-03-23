@@ -19,7 +19,20 @@ indexer.start().catch((error) => {
 });
 
 console.log(`Starting API server on port ${config.PORT}`);
-Bun.serve({
+const server = Bun.serve({
   port: config.PORT,
   fetch: apiServer.app.fetch,
 });
+
+// Graceful shutdown
+const shutdown = async () => {
+  console.log('\nShutting down gracefully...');
+  indexer.stop();
+  server.stop();
+  db.close();
+  console.log('Database connection closed.');
+  process.exit(0);
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
