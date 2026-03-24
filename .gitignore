@@ -36,4 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # SQLite
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 tokens.db
